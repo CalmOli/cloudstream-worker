@@ -1,7 +1,7 @@
 /**
  * Taboodude provider
  * Site: https://www.taboodude.com
- * Note: /latest-updates/ returns 404, use new/ path
+ * Videos now listed on homepage, /videos/ returns 404
  */
 
 import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
@@ -9,29 +9,25 @@ import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
 const BASE = 'https://www.taboodude.com';
 
 const SECTIONS = [
-  { name: 'Latest Videos', url: `${BASE}/videos/` },
+  { name: 'Latest Videos', url: `${BASE}/` },
 ];
 
 function parseItems(html, baseUrl) {
   const items = [];
-  const itemRe = /<div\s+class="item[^"]*"[\s\S]*?<\/div>\s*<!--/g;
+  const itemRe = /<a[^>]*href\s*=\s*"([^"]*\/video\/[^"]*)"[\s\S]*?<\/a>/g;
   let match;
   while ((match = itemRe.exec(html)) !== null) {
     const block = match[0];
     try {
-      const urlMatch = block.match(/<a[^>]*href\s*=\s*"([^"]*\/video\/[^"]*)"/);
-      if (!urlMatch) continue;
-      let url = urlMatch[1];
+      let url = match[1];
       if (!url.startsWith('http')) url = new URL(url, BASE).href;
 
-      let title = extractFirst(block, /<strong[^>]*class="title"[^>]*>([^<]+)/) ||
-                  extractFirst(block, /<a[^>]*title\s*=\s*"([^"]+)"/);
+      let title = extractFirst(block, /title\s*=\s*"([^"]+)"/) ||
+                  extractFirst(block, /<img[^>]*alt\s*=\s*"([^"]+)"/);
       if (!title) continue;
       title = title.trim();
 
-      let poster = extractFirst(block, /data-original="([^"]+)"/) ||
-                   extractFirst(block, /data-src="([^"]+)"/) ||
-                   extractFirst(block, /<img[^>]*src="([^"]+)"/);
+      let poster = extractFirst(block, /<img[^>]*src\s*=\s*"([^"]+)"/);
 
       items.push({ url, title, poster });
     } catch {}
@@ -49,9 +45,10 @@ export const taboodude = {
     return { sections: results };
   },
   async search(query, page = 1) {
-    const searchUrl = `${BASE}/search/${encodeURIComponent(query)}/?page=${page}`;
+    const searchUrl = `${BASE}/search?q=${encodeURIComponent(query)}&page=${page}`;
     const { html } = await fetchPage(searchUrl);
-    return { items: parseItems(html, searchUrl), page };
+    const items = parseItems(html, searchUrl);
+    return { items: items.slice(0, 50), page };
   },
   async load(videoUrl) {
     const { html } = await fetchPage(videoUrl);

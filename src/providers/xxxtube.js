@@ -3,7 +3,7 @@
  * Site: https://x-x-x.tube
  */
 
-import { fetchPage, extractFirst } from './helpers.js';
+import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
 
 const BASE = 'https://x-x-x.tube';
 
@@ -60,6 +60,13 @@ export const xxxtube = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
+    const { html } = await fetchPage(videoUrl);
+    const embedUrl = extractFirst(html, /<meta[^>]*property\s*=\s*"og:video(?::url|:secure_url)?"[^>]*content\s*=\s*"([^"]+)"/i) ||
+                     extractFirst(html, /<meta[^>]*content\s*=\s*"([^"]+)"[^>]*property\s*=\s*"og:video(?:url|:secure_url)?"/i);
+    if (embedUrl && !embedUrl.match(/\.(mp4|m3u8)/)) {
+      const sources = await extractSourcesFromPage(embedUrl, { resolveRedirects: true });
+      if (sources && sources.length > 0) return { page: videoUrl, sources };
+    }
     return { page: videoUrl, sources: [] };
   },
 };
