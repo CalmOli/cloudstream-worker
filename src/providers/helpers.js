@@ -135,6 +135,12 @@ export function extractVideoSources(html, pageUrl) {
     addToList(secondary, m[0]);
   }
 
+  // Strategy 7: wp-content upload .mp4 URLs (SECONDARY)
+  const wpRe = /https?:\/\/[^"'\s<>]*wp-content\/uploads\/[^"'\s<>]+\.mp4[^"'\s<>]*/g;
+  while ((m = wpRe.exec(html)) !== null) {
+    addToList(secondary, m[0]);
+  }
+
   // Only use secondary (broad regex) sources if primary found nothing
   // This prevents picking up unrelated video URLs from the page sidebar/related videos
   if (primary.length === 0) {
@@ -163,22 +169,25 @@ export async function resolveVideoUrl(videoUrl, referer) {
     });
     const location = resp.headers.get('location');
     if (location) {
-      // Follow redirect to CDN (no content-type check needed; CDN URL is always more playable)
-      try {
-        const resp2 = await fetch(location, {
-          method: 'HEAD',
-          headers: { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl },
-          redirect: 'follow',
-          signal: AbortSignal.timeout(15000),
-        });
-        // Accept any ok status or any non-html content type from the CDN
-        const ct = resp2.headers.get('content-type') || '';
-        if (resp2.ok || !ct.includes('text/html')) {
-          const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u') || resp2.url.includes('.m3u8');
-          return { url: resp2.url, status: resp2.status, contentType: ct, isM3u8 };
-        }
-      } catch {}
-      // If following failed, use the first redirect URL directly
+      // Follow redirect to CDN - HEAD first, fall back to range request for CDNs that block HEAD
+      for (const method of ['HEAD', 'GET']) {
+        try {
+          const headers = { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl };
+          if (method === 'GET') headers['Range'] = 'bytes=0-0';
+          const resp2 = await fetch(location, {
+            method,
+            headers,
+            redirect: 'follow',
+            signal: AbortSignal.timeout(15000),
+          });
+          const ct = resp2.headers.get('content-type') || '';
+          if (resp2.ok || !ct.includes('text/html')) {
+            const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u') || resp2.url.includes('.m3u8');
+            return { url: resp2.url, status: resp2.status, contentType: ct, isM3u8 };
+          }
+        } catch {}
+      }
+      // If all methods failed, use the first redirect URL directly
       return { url: location, status: 302, contentType: 'video/redirect', isM3u8: true };
     }
     const ct = resp.headers.get('content-type') || '';

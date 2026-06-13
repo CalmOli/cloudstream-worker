@@ -3,7 +3,7 @@
  * Site: https://www.shyfap.net
  */
 
-import { fetchPage, extractFirst } from './helpers.js';
+import { fetchPage, extractFirst, resolveVideoUrl } from './helpers.js';
 import { extractVideoSources } from './video-sources.js';
 
 const BASE = 'https://www.shyfap.net';
@@ -65,6 +65,15 @@ export const shyfap = {
   },
   async loadlinks(videoUrl) {
     const { html } = await fetchPage(videoUrl, { referer: videoUrl });
-    return { sources: extractVideoSources(html) };
+    const sources = extractVideoSources(html);
+    const resolved = await Promise.all(sources.map(async (src) => {
+      const result = await resolveVideoUrl(src.url, videoUrl);
+      if (result.status > 0 && !result.contentType.includes('text/html')) {
+        const quality = parseInt(src.quality) || 0;
+        return { url: result.url, quality, isM3u8: result.isM3u8 || false };
+      }
+      return { url: src.url, quality: parseInt(src.quality) || 0, isM3u8: false };
+    }));
+    return { sources: resolved.filter(s => s.url) };
   },
 };
