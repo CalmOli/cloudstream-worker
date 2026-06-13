@@ -1,4 +1,4 @@
-import { fetchPage, extractFirst } from './helpers.js';
+import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
 
 const BASE = 'https://neporn.com';
 
@@ -24,7 +24,7 @@ function parseItems(html, baseUrl) {
       if (!title) continue;
       title = title.trim();
 
-      let poster = extractFirst(block, /<img[^>]*class="thumb"[^>]*src="([^"]+)"/) ||
+      let poster = extractFirst(block, /<img[^>]*class="thumb\s*"[^>]*src="([^"]+)/) ||
                    extractFirst(block, /<img[^>]*data-original="([^"]+)"/);
 
       items.push({ url, title, poster });
@@ -48,8 +48,9 @@ export const neporn = {
   },
   async load(videoUrl) {
     const { html } = await fetchPage(videoUrl);
-    let title = extractFirst(html, /<h1[^>]*>([^<]+)/) ||
-                extractFirst(html, /<meta[^>]*property\s*=\s*"og:title"[^>]*content\s*=\s*"([^"]+)"/i) ||
+    // Prefer og:title over h1 (h1 sometimes has "Video: " prefix)
+    let title = extractFirst(html, /<meta[^>]*property\s*=\s*"og:title"[^>]*content\s*=\s*"([^"]+)"/i) ||
+                extractFirst(html, /<h1[^>]*>([^<]+)/) ||
                 extractFirst(html, /<title>([^<]+)/);
     if (title) title = title.trim();
     const poster = extractFirst(html, /<meta[^>]*property\s*=\s*"og:image"[^>]*content\s*=\s*"([^"]+)"/i);
@@ -57,6 +58,7 @@ export const neporn = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    return { page: videoUrl, sources: [] };
+    const sources = await extractSourcesFromPage(videoUrl);
+    return { page: videoUrl, sources };
   },
 };

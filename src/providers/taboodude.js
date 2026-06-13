@@ -4,13 +4,12 @@
  * Note: /latest-updates/ returns 404, use new/ path
  */
 
-import { fetchPage, extractFirst } from './helpers.js';
-import { extractVideoSources } from './video-sources.js';
+import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
 
 const BASE = 'https://www.taboodude.com';
 
 const SECTIONS = [
-  { name: 'Latest Videos', url: `${BASE}/new/` },
+  { name: 'Latest Videos', url: `${BASE}/videos/` },
 ];
 
 function parseItems(html, baseUrl) {
@@ -65,7 +64,7 @@ export const taboodude = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    const { html } = await fetchPage(videoUrl, { referer: videoUrl });
-    return { sources: extractVideoSources(html) };
+    const sources = await extractSourcesFromPage(videoUrl);
+    return { page: videoUrl, sources };
   },
 };
