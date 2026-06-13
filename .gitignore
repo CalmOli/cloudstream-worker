@@ -4,3 +4,5 @@ dist/
 *.log
 .env
 
+debug*.js
+test*.js
