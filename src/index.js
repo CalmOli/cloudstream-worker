@@ -59,6 +59,28 @@ export default {
       return json(results);
     }
 
+    // Image proxy: fetches images with referer header (for sites whose CDN requires it)
+    if (action === 'img') {
+      const imgUrl = url.searchParams.get('url');
+      const ref = url.searchParams.get('ref') || '';
+      if (!imgUrl) return err('Missing url');
+      try {
+        const resp = await fetch(imgUrl, {
+          method: 'GET', redirect: 'follow',
+          headers: { 'User-Agent': DEFAULT_UA, 'Referer': ref || imgUrl },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!resp.ok) return err(`Image fetch failed: ${resp.status}`, resp.status);
+        const ct = resp.headers.get('content-type') || 'image/jpeg';
+        return new Response(resp.body, {
+          status: 200,
+          headers: { ...CORS, 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' },
+        });
+      } catch (e) {
+        return err(`Image proxy error: ${e.message}`, 502);
+      }
+    }
+
     // Video proxy endpoint: Worker fetches the video page, extracts fresh video URLs,
     // and streams the first successful result to the phone.
     // Params: vid = video page URL, provider = provider name
