@@ -1,9 +1,4 @@
-/**
- * Hdporn provider
- * Site: https://www.hdporn.gg
- */
-
-import { fetchPage, extractFirst } from './helpers.js';
+import { fetchPage, extractFirst, extractVideoSources } from './helpers.js';
 
 const BASE = 'https://www.hdporn.gg';
 
@@ -69,6 +64,8 @@ export const hdporn = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    return { page: videoUrl, sources: [] };
+    const { html, cookies } = await fetchPage(videoUrl);
+    const sources = extractVideoSources(html, videoUrl);
+    return { page: videoUrl, sources, cookies, html };
   },
 };

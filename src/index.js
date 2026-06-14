@@ -95,25 +95,36 @@ export default {
         const pageResult = await prov.loadlinks(vid);
         const cookies = pageResult.cookies || '';
         if (!pageResult.sources || pageResult.sources.length === 0) return err('No sources found', 404);
-        // Try each source: prefer CDN (non-get_file) URLs, stream the first one that works
+        // Try each source URL; use a small Range probe to find the working one,
+        // then stream the full video from the resolved CDN URL.
         for (const src of pageResult.sources) {
-          const url = src.url;
+          const sourceUrl = src.url;
           try {
-            const headers = { 'User-Agent': DEFAULT_UA, Referer: vid };
-            if (cookies) headers['Cookie'] = cookies;
-            const resp = await fetch(url, {
-              method: 'GET', redirect: 'follow', headers, signal: AbortSignal.timeout(30000),
+            const probeHeaders = { 'User-Agent': DEFAULT_UA, Referer: vid, 'Range': 'bytes=0-0' };
+            if (cookies) probeHeaders['Cookie'] = cookies;
+            const probeResp = await fetch(sourceUrl, {
+              method: 'GET', redirect: 'follow', headers: probeHeaders,
+              signal: AbortSignal.timeout(15000),
             });
-            if (resp.ok || resp.status === 206) {
-              const responseHeaders = {
-                ...CORS,
-                'Content-Type': resp.headers.get('content-type') || 'video/mp4',
-                'Accept-Ranges': 'bytes',
-                ...(resp.headers.get('content-length') ? { 'Content-Length': resp.headers.get('content-length') } : {}),
-                ...(resp.headers.get('content-range') ? { 'Content-Range': resp.headers.get('content-range') } : {}),
-              };
-              return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: responseHeaders });
-            }
+            if (!probeResp.ok && probeResp.status !== 206) continue;
+            const finalUrl = probeResp.url;
+            const ct = probeResp.headers.get('content-type') || '';
+            if (ct.includes('text/html')) continue;
+            // Stream full video from resolved CDN URL
+            const streamResp = await fetch(finalUrl, {
+              method: 'GET', redirect: 'follow',
+              headers: { 'User-Agent': DEFAULT_UA, Referer: vid, 'Cookie': cookies },
+              signal: AbortSignal.timeout(120000),
+            });
+            if (!streamResp.ok && streamResp.status !== 206) continue;
+            const responseHeaders = {
+              ...CORS,
+              'Content-Type': streamResp.headers.get('content-type') || ct || 'video/mp4',
+              'Accept-Ranges': 'bytes',
+              ...(streamResp.headers.get('content-length') ? { 'Content-Length': streamResp.headers.get('content-length') } : {}),
+              ...(streamResp.headers.get('content-range') ? { 'Content-Range': streamResp.headers.get('content-range') } : {}),
+            };
+            return new Response(streamResp.body, { status: streamResp.status, headers: responseHeaders });
           } catch {}
         }
         return err('All sources failed', 502);
@@ -198,7 +209,10 @@ export default {
           }
 
           // Resolve get_file URLs: try multiple methods to find CDN URL
-          if (sources) {
+          // For some providers (hdporn), the get_file URLs need phone-side cookies,
+          // so we skip resolution here and let the phone fetch them directly.
+          const skipGetFileResolve = ['hdporn'];
+          if (sources && !skipGetFileResolve.includes(providerName)) {
             sources = await Promise.all(sources.map(async (src) => {
               if (!src.url.includes('/get_file/')) return src;
               const attempts = [
@@ -249,12 +263,13 @@ export default {
             }
           }
 
-          // For CDN URLs that are IP-bound (like xascdn.li), wrap in stream proxy
+          // For CDN URLs that are IP-bound, wrap in stream proxy
           const baseProxyUrl = url.origin + '/api/stream';
+          const proxyDomains = ['xascdn.li', 'ahcdn.com', 'fpvcdn.com'];
           if (sources) {
             sources = sources.map(s => {
               const u = s.url;
-              if (u.includes('xascdn.li')) {
+              if (proxyDomains.some(d => u.includes(d))) {
                 return { ...s, url: `${baseProxyUrl}?provider=${providerName}&vid=${encodeURIComponent(videoUrl)}` };
               }
               return s;
