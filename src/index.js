@@ -265,6 +265,7 @@ export default {
             page: pageResult.page || videoUrl,
             sources,
             html,
+            cookies,
           });
         }
         default: return err(`Unknown action: ${action}`, 404);
