@@ -1,5 +1,6 @@
 import { providers } from './providers/index.js';
 import { extractSourcesFromPage, fetchPage } from './providers/helpers.js';
+import { getStreamUrls, getSiteTag, isApiProvider } from './pornapi.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -56,12 +57,8 @@ export default {
           const videoUrl = url.searchParams.get('url');
           if (!videoUrl) return err('Missing url parameter for loadlinks');
           const pageResult = await provider.loadlinks(videoUrl);
-          // Use provider's own sources if non-empty, otherwise extract from page
-          let sources = pageResult.sources;
-          if (!sources || sources.length === 0) {
-            sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
-          }
-          // Use HTML from provider if available (avoid redundant fetch), otherwise fetch
+
+          // Get HTML from provider if available, otherwise fetch
           let html = pageResult.html || null;
           if (!html) {
             try {
@@ -69,6 +66,22 @@ export default {
               html = page.html;
             } catch {}
           }
+
+          // For API-dependent providers: resolve via porn-app.com /stream
+          let sources = pageResult.sources;
+          if (isApiProvider(providerName) && html) {
+            const siteTag = getSiteTag(providerName);
+            const apiSources = await getStreamUrls(siteTag, html, videoUrl);
+            if (apiSources && apiSources.length > 0) {
+              sources = apiSources;
+            }
+          }
+
+          // Fallback: extract from page if no sources
+          if (!sources || sources.length === 0) {
+            sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
+          }
+
           return json({
             page: pageResult.page || videoUrl,
             sources,
