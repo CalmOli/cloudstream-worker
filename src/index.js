@@ -59,6 +59,46 @@ export default {
       return json(results);
     }
 
+    // Video proxy endpoint: Worker fetches the video page, extracts fresh video URLs,
+    // and streams the first successful result to the phone.
+    // Params: vid = video page URL, provider = provider name
+    if (action === 'stream') {
+      const vid = url.searchParams.get('vid');
+      const providerName = url.searchParams.get('provider');
+      if (!vid || !providerName) return err('Missing vid or provider');
+      try {
+        const prov = getProvider(providerName);
+        if (!prov) return err('Unknown provider');
+        const pageResult = await prov.loadlinks(vid);
+        const cookies = pageResult.cookies || '';
+        if (!pageResult.sources || pageResult.sources.length === 0) return err('No sources found', 404);
+        // Try each source: prefer CDN (non-get_file) URLs, stream the first one that works
+        for (const src of pageResult.sources) {
+          const url = src.url;
+          try {
+            const headers = { 'User-Agent': DEFAULT_UA, Referer: vid };
+            if (cookies) headers['Cookie'] = cookies;
+            const resp = await fetch(url, {
+              method: 'GET', redirect: 'follow', headers, signal: AbortSignal.timeout(30000),
+            });
+            if (resp.ok || resp.status === 206) {
+              const responseHeaders = {
+                ...CORS,
+                'Content-Type': resp.headers.get('content-type') || 'video/mp4',
+                'Accept-Ranges': 'bytes',
+                ...(resp.headers.get('content-length') ? { 'Content-Length': resp.headers.get('content-length') } : {}),
+                ...(resp.headers.get('content-range') ? { 'Content-Range': resp.headers.get('content-range') } : {}),
+              };
+              return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: responseHeaders });
+            }
+          } catch {}
+        }
+        return err('All sources failed', 502);
+      } catch (e) {
+        return err(`Stream error: ${e.message}`, 500);
+      }
+    }
+
     const providerName = url.searchParams.get('provider');
     if (!providerName) return err('Missing provider parameter');
     const provider = getProvider(providerName);
@@ -155,6 +195,18 @@ export default {
                 }
               } catch {}
             }
+          }
+
+          // For CDN URLs that are IP-bound (like xascdn.li), wrap in stream proxy
+          const baseProxyUrl = url.origin + '/api/stream';
+          if (sources) {
+            sources = sources.map(s => {
+              const u = s.url;
+              if (u.includes('xascdn.li')) {
+                return { ...s, url: `${baseProxyUrl}?provider=${providerName}&vid=${encodeURIComponent(videoUrl)}` };
+              }
+              return s;
+            });
           }
 
           return json({
