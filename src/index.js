@@ -106,7 +106,6 @@ export default {
             }
           }
           // Resolve get_file URLs: try multiple methods to find CDN URL
-          const resolutions = [];
           if (sources) {
             sources = await Promise.all(sources.map(async (src) => {
               if (!src.url.includes('/get_file/')) return src;
@@ -126,24 +125,42 @@ export default {
                   });
                   const finalUrl = resp.url;
                   const ct = resp.headers.get('content-type') || '';
-                  resolutions.push({ from: src.url, method: attempt.method, status: resp.status, ct, to: finalUrl, redirected: finalUrl !== src.url });
                   if (finalUrl !== src.url && !finalUrl.includes('/get_file/')) {
                     const isM3u8 = ct.includes('m3u') || finalUrl.includes('.m3u8');
                     return { url: finalUrl, quality: src.quality, isM3u8 };
                   }
-                } catch (e) {
-                  resolutions.push({ from: src.url, method: attempt.method, error: e.message });
-                }
+                } catch {}
               }
               return src;
             }));
+          }
+          // Fallback: try fresh embed page extraction for sites with aggressive token expiry
+          if (sources && sources.every(s => s.url.includes('/get_file/')) && html) {
+            const iframeSrc = html.match(/<iframe[^>]+src="([^"]*\/embed\/[^"]+)"/i);
+            if (iframeSrc) {
+              let embedUrl = iframeSrc[1];
+              if (!embedUrl.startsWith('http')) embedUrl = new URL(embedUrl, videoUrl).href;
+              try {
+                const ep = await fetchPage(embedUrl);
+                const vu = ep.html.match(/video_url[^:]*:\s*['"]function\/\d+\/(https?:\/\/[^'"]+)['"]/i);
+                if (vu) {
+                  const resp = await fetch(vu[1], {
+                    method: 'GET', redirect: 'follow',
+                    headers: { 'User-Agent': DEFAULT_UA, Referer: embedUrl, 'Cookie': ep.cookies },
+                    signal: AbortSignal.timeout(20000),
+                  });
+                  if (resp.url !== vu[1] && !resp.url.includes('/get_file/')) {
+                    sources = [{ url: resp.url, quality: 0, isM3u8: (resp.headers.get('content-type')||'').includes('m3u') || resp.url.includes('.m3u8') }];
+                  }
+                }
+              } catch {}
+            }
           }
 
           return json({
             page: pageResult.page || videoUrl,
             sources,
             html,
-            _debug: { resolutions },
           });
         }
         default: return err(`Unknown action: ${action}`, 404);
