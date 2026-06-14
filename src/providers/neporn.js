@@ -59,7 +59,7 @@ export const neporn = {
   },
   async loadlinks(videoUrl) {
     const { html } = await fetchPage(videoUrl);
-    const sources = await extractSourcesFromPage(videoUrl, { html });
+    const sources = await extractSourcesFromPage(videoUrl, { html, resolveRedirects: true });
     return { page: videoUrl, sources, html };
   },
 };

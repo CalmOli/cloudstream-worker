@@ -71,13 +71,14 @@ export const xasiat = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    const { html } = await fetchPage(videoUrl);
-    const embedUrl = extractFirst(html, /<meta[^>]*property\s*=\s*"og:video(?::url|:secure_url)?"[^>]*content\s*=\s*"([^"]+)"/i) ||
-                     extractFirst(html, /<meta[^>]*content\s*=\s*"([^"]+)"[^>]*property\s*=\s*"og:video(?:url|:secure_url)?"/i);
+    const page = await fetchPage(videoUrl);
+    const embedUrl = extractFirst(page.html, /<meta[^>]*property\s*=\s*"og:video(?::url|:secure_url)?"[^>]*content\s*=\s*"([^"]+)"/i) ||
+                     extractFirst(page.html, /<meta[^>]*content\s*=\s*"([^"]+)"[^>]*property\s*=\s*"og:video(?:url|:secure_url)?"/i);
     if (embedUrl && !embedUrl.match(/\.(mp4|m3u8)/)) {
       const sources = await extractSourcesFromPage(embedUrl, { resolveRedirects: true });
-      if (sources && sources.length > 0) return { page: videoUrl, sources, html };
+      if (sources && sources.length > 0) return { page: videoUrl, sources, html: page.html, cookies: page.cookies };
     }
-    return { page: videoUrl, sources: [], html };
+    const sources = await extractSourcesFromPage(videoUrl, { html: page.html, cookies: page.cookies, resolveRedirects: true });
+    return { page: videoUrl, sources, html: page.html, cookies: page.cookies };
   },
 };

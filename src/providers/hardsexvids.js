@@ -57,8 +57,8 @@ export const hardsexvids = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    const { html } = await fetchPage(videoUrl);
-    const sources = await extractSourcesFromPage(videoUrl, { html });
-    return { page: videoUrl, sources, html };
+    const page = await fetchPage(videoUrl);
+    const sources = await extractSourcesFromPage(videoUrl, { html: page.html, cookies: page.cookies, resolveRedirects: true });
+    return { page: videoUrl, sources, html: page.html, cookies: page.cookies };
   },
 };

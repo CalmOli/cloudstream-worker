@@ -1,5 +1,5 @@
 import { providers } from './providers/index.js';
-import { extractSourcesFromPage, fetchPage } from './providers/helpers.js';
+import { extractSourcesFromPage, fetchPage, DEFAULT_UA } from './providers/helpers.js';
 import { getStreamUrls, getSiteTag, isApiProvider } from './pornapi.js';
 
 const CORS = {
@@ -35,6 +35,30 @@ export default {
     if (parts.length < 2 || parts[0] !== 'api') return err('Use /api/mainpage, /api/search, /api/load, or /api/loadlinks', 404);
 
     const action = parts[1];
+
+    // resolve_url doesn't need a provider
+    if (action === 'resolve_url') {
+      const targetUrl = url.searchParams.get('url');
+      const ref = url.searchParams.get('ref') || '';
+      const cookieStr = url.searchParams.get('cookies') || '';
+      if (!targetUrl) return err('Missing url');
+      const results = {};
+      for (const method of ['HEAD', 'GET']) {
+        try {
+          const headers = { 'User-Agent': DEFAULT_UA, Referer: ref || targetUrl };
+          if (cookieStr) headers['Cookie'] = cookieStr;
+          if (method === 'GET') headers['Range'] = 'bytes=0-0';
+          const resp = await fetch(targetUrl, {
+            method, redirect: 'manual', headers, signal: AbortSignal.timeout(10000),
+          });
+          results[method] = { status: resp.status, ct: resp.headers.get('content-type'), location: resp.headers.get('location'), url: resp.url };
+        } catch (e) {
+          results[method] = { error: e.message };
+        }
+      }
+      return json(results);
+    }
+
     const providerName = url.searchParams.get('provider');
     if (!providerName) return err('Missing provider parameter');
     const provider = getProvider(providerName);
@@ -58,34 +82,68 @@ export default {
           if (!videoUrl) return err('Missing url parameter for loadlinks');
           const pageResult = await provider.loadlinks(videoUrl);
 
-          // Get HTML from provider if available, otherwise fetch
+          // Get HTML and cookies from provider if available, otherwise fetch
           let html = pageResult.html || null;
+          let cookies = pageResult.cookies || '';
           if (!html) {
             try {
               const page = await fetchPage(videoUrl);
               html = page.html;
+              cookies = page.cookies;
             } catch {}
           }
 
-          // For API-dependent providers: resolve via porn-app.com /stream
+          // Resolve sources: provider → fallback extraction → API
           let sources = pageResult.sources;
-          if (isApiProvider(providerName) && html) {
+          if (!sources || sources.length === 0) {
+            sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
+          }
+          if ((!sources || sources.length === 0) && isApiProvider(providerName) && html) {
             const siteTag = getSiteTag(providerName);
             const apiSources = await getStreamUrls(siteTag, html, videoUrl);
             if (apiSources && apiSources.length > 0) {
               sources = apiSources;
             }
           }
-
-          // Fallback: extract from page if no sources
-          if (!sources || sources.length === 0) {
-            sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
+          // Resolve get_file URLs: try multiple methods to find CDN URL
+          const resolutions = [];
+          if (sources) {
+            sources = await Promise.all(sources.map(async (src) => {
+              if (!src.url.includes('/get_file/')) return src;
+              const attempts = [
+                { method: 'GET', headers: { 'User-Agent': DEFAULT_UA, Referer: videoUrl, 'Range': 'bytes=0-0' } },
+                { method: 'GET', headers: { 'User-Agent': DEFAULT_UA, Referer: videoUrl } },
+                { method: 'HEAD', headers: { 'User-Agent': DEFAULT_UA, Referer: videoUrl } },
+              ];
+              for (const attempt of attempts) {
+                try {
+                  if (cookies) attempt.headers['Cookie'] = cookies;
+                  const resp = await fetch(src.url, {
+                    method: attempt.method,
+                    redirect: 'follow',
+                    headers: attempt.headers,
+                    signal: AbortSignal.timeout(20000),
+                  });
+                  const finalUrl = resp.url;
+                  const ct = resp.headers.get('content-type') || '';
+                  resolutions.push({ from: src.url, method: attempt.method, status: resp.status, ct, to: finalUrl, redirected: finalUrl !== src.url });
+                  if (finalUrl !== src.url && !finalUrl.includes('/get_file/')) {
+                    const isM3u8 = ct.includes('m3u') || finalUrl.includes('.m3u8');
+                    return { url: finalUrl, quality: src.quality, isM3u8 };
+                  }
+                } catch (e) {
+                  resolutions.push({ from: src.url, method: attempt.method, error: e.message });
+                }
+              }
+              return src;
+            }));
           }
 
           return json({
             page: pageResult.page || videoUrl,
             sources,
             html,
+            _debug: { resolutions },
           });
         }
         default: return err(`Unknown action: ${action}`, 404);

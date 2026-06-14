@@ -1,6 +1,15 @@
 export const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+export function parseCookies(setCookieHeader) {
+  if (!setCookieHeader) return '';
+  return setCookieHeader
+    .split(/,(?=\s*\w+=)/)
+    .map(c => c.split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
 export async function fetchPage(url, options = {}) {
   const { referer, ua = DEFAULT_UA, timeout = 20000 } = options;
   const controller = new AbortController();
@@ -17,13 +26,13 @@ export async function fetchPage(url, options = {}) {
       signal: controller.signal,
       redirect: 'follow',
     });
-    const cookies = resp.headers.get('set-cookie') || '';
+    const rawCookies = resp.headers.get('set-cookie') || '';
+    const cookies = parseCookies(rawCookies);
     return {
       html: await resp.text(),
       status: resp.status,
       url: resp.url,
       cookies,
-      headers: Object.fromEntries(resp.headers),
     };
   } finally {
     clearTimeout(timer);
@@ -159,11 +168,13 @@ export function extractVideoSources(html, pageUrl) {
  * Try to follow a get_file redirect to find the final CDN URL.
  * Returns the redirected URL or the original if no redirect.
  */
-export async function resolveVideoUrl(videoUrl, referer) {
+export async function resolveVideoUrl(videoUrl, referer, cookies = '') {
   try {
+    const headers = { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl };
+    if (cookies) headers['Cookie'] = cookies;
     const resp = await fetch(videoUrl, {
       method: 'HEAD',
-      headers: { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl },
+      headers,
       redirect: 'manual',
       signal: AbortSignal.timeout(15000),
     });
@@ -172,11 +183,12 @@ export async function resolveVideoUrl(videoUrl, referer) {
       // Follow redirect to CDN - HEAD first, fall back to range request for CDNs that block HEAD
       for (const method of ['HEAD', 'GET']) {
         try {
-          const headers = { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl };
-          if (method === 'GET') headers['Range'] = 'bytes=0-0';
+          const headers2 = { 'User-Agent': DEFAULT_UA, Referer: referer || videoUrl };
+          if (cookies) headers2['Cookie'] = cookies;
+          if (method === 'GET') headers2['Range'] = 'bytes=0-0';
           const resp2 = await fetch(location, {
             method,
-            headers,
+            headers: headers2,
             redirect: 'follow',
             signal: AbortSignal.timeout(15000),
           });
@@ -230,12 +242,12 @@ export async function resolveOkruUrl(apiUrl, referer) {
  * Fetches the page, extracts sources, optionally resolves get_file redirects.
  */
 export async function extractSourcesFromPage(pageUrl, options = {}) {
-  const { resolveRedirects = false, html: preFetchedHtml } = options;
+  const { resolveRedirects = false, html: preFetchedHtml, cookies = '' } = options;
   const html = preFetchedHtml || (await fetchPage(pageUrl)).html;
   const sources = extractVideoSources(html, pageUrl);
 
   if (resolveRedirects && sources.length > 0) {
-    const results = await Promise.all(sources.map(src => resolveVideoUrl(src.url, pageUrl)));
+    const results = await Promise.all(sources.map(src => resolveVideoUrl(src.url, pageUrl, cookies)));
     const resolved = sources.map((src, i) => {
       const result = results[i];
       if (result.status > 0 && !result.contentType.includes('text/html')) {

@@ -9,11 +9,13 @@ const BASE = 'https://x-x-x.tube';
 
 const SECTIONS = [
   { name: 'Latest Videos', url: `${BASE}/videos/` },
+  { name: 'Top Rated', url: `${BASE}/top-rated/` },
+  { name: 'Most Viewed', url: `${BASE}/most-popular/` },
 ];
 
 function parseItems(html, baseUrl) {
   const items = [];
-  const itemRe = /<div\s+class="item\s+thumb"[\s\S]*?<\/div>\s*<\/div>/g;
+  const itemRe = /<div\s+class="item\s+thumb[^"]*"[\s\S]*?<\/div>\s*<\/div>/g;
   let match;
   while ((match = itemRe.exec(html)) !== null) {
     const block = match[0];
@@ -22,6 +24,7 @@ function parseItems(html, baseUrl) {
       if (!urlMatch) continue;
       let url = urlMatch[1];
       if (!url.startsWith('http')) url = new URL(url, BASE).href;
+      if (!url.startsWith(BASE)) continue;
 
       let title = extractFirst(block, /<a[^>]*title\s*=\s*"([^"]+)"/);
       if (!title) continue;
