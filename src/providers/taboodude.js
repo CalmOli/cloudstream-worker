@@ -61,7 +61,8 @@ export const taboodude = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    const sources = await extractSourcesFromPage(videoUrl);
-    return { page: videoUrl, sources };
+    const { html } = await fetchPage(videoUrl);
+    const sources = await extractSourcesFromPage(videoUrl, { html });
+    return { page: videoUrl, sources, html };
   },
 };

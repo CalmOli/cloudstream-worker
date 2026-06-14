@@ -1,5 +1,5 @@
 import { providers } from './providers/index.js';
-import { extractSourcesFromPage } from './providers/helpers.js';
+import { extractSourcesFromPage, fetchPage } from './providers/helpers.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,9 +14,14 @@ function json(data, status = 200) {
 }
 function err(msg, status = 400) { return json({ error: msg }, status); }
 
+const ALIASES = {
+  taboodudecom: 'taboodude',
+};
+
 function getProvider(name) {
-  const p = providers[name.toLowerCase()];
-  return p || null;
+  const key = name.toLowerCase();
+  const alias = ALIASES[key];
+  return providers[alias || key] || null;
 }
 
 export default {
@@ -56,7 +61,19 @@ export default {
           if (!sources || sources.length === 0) {
             sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
           }
-          return json({ page: pageResult.page || videoUrl, sources });
+          // Use HTML from provider if available (avoid redundant fetch), otherwise fetch
+          let html = pageResult.html || null;
+          if (!html) {
+            try {
+              const page = await fetchPage(videoUrl);
+              html = page.html;
+            } catch {}
+          }
+          return json({
+            page: pageResult.page || videoUrl,
+            sources,
+            html,
+          });
         }
         default: return err(`Unknown action: ${action}`, 404);
       }

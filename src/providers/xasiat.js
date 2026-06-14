@@ -76,8 +76,8 @@ export const xasiat = {
                      extractFirst(html, /<meta[^>]*content\s*=\s*"([^"]+)"[^>]*property\s*=\s*"og:video(?:url|:secure_url)?"/i);
     if (embedUrl && !embedUrl.match(/\.(mp4|m3u8)/)) {
       const sources = await extractSourcesFromPage(embedUrl, { resolveRedirects: true });
-      if (sources && sources.length > 0) return { page: videoUrl, sources };
+      if (sources && sources.length > 0) return { page: videoUrl, sources, html };
     }
-    return { page: videoUrl, sources: [] };
+    return { page: videoUrl, sources: [], html };
   },
 };

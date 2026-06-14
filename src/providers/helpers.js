@@ -230,8 +230,8 @@ export async function resolveOkruUrl(apiUrl, referer) {
  * Fetches the page, extracts sources, optionally resolves get_file redirects.
  */
 export async function extractSourcesFromPage(pageUrl, options = {}) {
-  const { resolveRedirects = false } = options;
-  const { html } = await fetchPage(pageUrl);
+  const { resolveRedirects = false, html: preFetchedHtml } = options;
+  const html = preFetchedHtml || (await fetchPage(pageUrl)).html;
   const sources = extractVideoSources(html, pageUrl);
 
   if (resolveRedirects && sources.length > 0) {
