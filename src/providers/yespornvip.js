@@ -3,7 +3,7 @@
  * Site: https://yesporn.vip
  */
 
-import { fetchPage, extractFirst } from './helpers.js';
+import { fetchPage, extractFirst, extractSourcesFromPage } from './helpers.js';
 
 const BASE = 'https://yesporn.vip';
 
@@ -63,6 +63,7 @@ export const yespornvip = {
     return { title, poster, description: description || null, tags: [] };
   },
   async loadlinks(videoUrl) {
-    return { page: videoUrl, sources: [] };
+    const sources = await extractSourcesFromPage(videoUrl);
+    return { page: videoUrl, sources };
   },
 };

@@ -198,6 +198,34 @@ export async function resolveVideoUrl(videoUrl, referer) {
 }
 
 /**
+ * Resolve ok.ru API URL to m3u8 video URLs.
+ * The ok.ru API returns JSON with video URLs inside playerInfo.videos[].
+ */
+export async function resolveOkruUrl(apiUrl, referer) {
+  try {
+    const resp = await fetch(apiUrl, {
+      headers: {
+        'User-Agent': DEFAULT_UA,
+        Referer: referer || apiUrl,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    const videos = json?.playerInfo?.videos || json?.videos || [];
+    return videos
+      .filter(v => v.url)
+      .map(v => ({
+        url: v.url,
+        quality: parseInt(v.quality) || parseInt(v.name) || 0,
+        isM3u8: true,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Full video source extraction for a page URL.
  * Fetches the page, extracts sources, optionally resolves get_file redirects.
  */
