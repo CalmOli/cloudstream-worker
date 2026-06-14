@@ -53,7 +53,7 @@ function isApiProvider(providerName) {
   return API_PROVIDERS.has(providerName.toLowerCase());
 }
 
-async function getStreamUrls(siteTag, html, pageUrl) {
+async function getStreamUrls(siteTag, html, pageUrl, rawResponse = false) {
   const hash = generateHash();
   if (!hash) return [];
 
@@ -79,10 +79,18 @@ async function getStreamUrls(siteTag, html, pageUrl) {
 
     if (!resp.ok) return [];
     const text = await resp.text();
-    const arr = JSON.parse(text);
-    if (!Array.isArray(arr)) return [];
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return [];
+    }
 
-    return arr.map(item => {
+    if (rawResponse) return parsed || {};
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map(item => {
       const url = item.stream || item.streamLink || '';
       const qualityStr = item.quality || '';
       const quality = qualityStr.includes('2160') || qualityStr.includes('4k') ? 2160

@@ -1,6 +1,7 @@
 import { providers } from './providers/index.js';
 import { extractSourcesFromPage, fetchPage, DEFAULT_UA } from './providers/helpers.js';
 import { getStreamUrls, getSiteTag, isApiProvider } from './pornapi.js';
+import { kvsDecodeUrl } from './providers/kvs_decoder.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -171,6 +172,31 @@ export default {
               sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
             }
           }
+          // KVS decoding: unscramble get_file URL hashes using license_code from page
+          if (html && sources) {
+            const licenseMatch = html.match(/license_code\s*:\s*['"]([^'"]+)['"]/i);
+            if (licenseMatch) {
+              const licenseCode = licenseMatch[1];
+              const functionMatches = [...html.matchAll(/(video_url|video_alt_url\d*):\s*['"](function\/\d+\/[^'"]+)['"]/gi)];
+              const decodedMap = new Map();
+              for (const m of functionMatches) {
+                try {
+                  const decoded = kvsDecodeUrl(m[2], licenseCode);
+                  const cleanScrambled = m[2].replace(/^function\/\d+\//, '');
+                  if (decoded && decoded !== cleanScrambled) {
+                    decodedMap.set(cleanScrambled, decoded);
+                  }
+                } catch {}
+              }
+              if (decodedMap.size > 0) {
+                sources = sources.map(src => {
+                  const fixed = decodedMap.get(src.url);
+                  return fixed ? { ...src, url: fixed } : src;
+                });
+              }
+            }
+          }
+
           // Resolve get_file URLs: try multiple methods to find CDN URL
           if (sources) {
             sources = await Promise.all(sources.map(async (src) => {
