@@ -133,16 +133,20 @@ export default {
             } catch {}
           }
 
-          // Resolve sources: provider → fallback extraction → API
-          let sources = pageResult.sources;
-          if (!sources || sources.length === 0) {
-            sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
-          }
-          if ((!sources || sources.length === 0) && isApiProvider(providerName) && html) {
+          // Resolve sources: API is primary (returns working CDN URLs),
+          // fall back to page extraction only if API fails
+          let sources = null;
+          if (isApiProvider(providerName) && html) {
             const siteTag = getSiteTag(providerName);
             const apiSources = await getStreamUrls(siteTag, html, videoUrl);
             if (apiSources && apiSources.length > 0) {
               sources = apiSources;
+            }
+          }
+          if (!sources || sources.length === 0) {
+            sources = pageResult.sources;
+            if (!sources || sources.length === 0) {
+              sources = await extractSourcesFromPage(videoUrl, { resolveRedirects: true });
             }
           }
           // Resolve get_file URLs: try multiple methods to find CDN URL
