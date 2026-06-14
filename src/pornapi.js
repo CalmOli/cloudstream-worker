@@ -6,7 +6,6 @@ const PUBKEY_B64 = 'MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2e/sX/U3UNOsCJQH
 
 const PROVIDER_TO_SITETAG = {
   xxxtube: 'xxxtube',
-  hardsexvids: 'hardsexvidscom',
   neporn: 'neporncom',
   xasiat: 'xasiatcom',
   yespornvip: 'yespornvip',
@@ -14,7 +13,7 @@ const PROVIDER_TO_SITETAG = {
   taboodudecom: 'taboodudecom',
 };
 
-const API_PROVIDERS = new Set(['xxxtube', 'hardsexvids', 'neporn', 'xasiat', 'yespornvip', 'taboodude', 'taboodudecom']);
+const API_PROVIDERS = new Set(['xxxtube', 'neporn', 'xasiat', 'yespornvip', 'taboodude', 'taboodudecom']);
 
 let cachedHash = '';
 let cachedHashTime = 0;

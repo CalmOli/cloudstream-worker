@@ -7,7 +7,7 @@ import { bingato } from './bingato.js';
 import { blowjobs } from './blowjobs.js';
 import { freeuseporn } from './freeuseporn.js';
 import { fullvideos } from './fullvideos.js';
-import { hardsexvids } from './hardsexvids.js';
+
 import { hdporn } from './hdporn.js';
 import { javbangers } from './javbangers.js';
 import { laidhub } from './laidhub.js';
@@ -29,7 +29,6 @@ export const providers = {
   blowjobs,
   freeuseporn,
   fullvideos,
-  hardsexvids,
   hdporn,
   javbangers,
   laidhub,
